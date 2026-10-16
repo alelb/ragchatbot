@@ -4,11 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Commands
 
-Uses `uv` (Python 3.13). Always use `uv` to run Python files (`uv run python <file>`) and to manage dependencies (`uv add <pkg>`); never call `pip` or bare `python` directly. Requires `ANTHROPIC_API_KEY` in a root `.env` (see `.env.example`).
+Uses `uv` (Python 3.13). Always use `uv` to run Python files (`uv run python <file>`) and to manage dependencies (`uv add <pkg>`); never call `pip` or bare `python` directly. Configured via a root `.env` (see `.env.example`): either `ANTHROPIC_API_KEY` for Claude, or `LLM_BASE_URL=http://localhost:11434` + `ANTHROPIC_MODEL=<ollama model>` to use a local Ollama model through its Anthropic-compatible `/v1/messages` endpoint (no key needed; `AIGenerator` then disables thinking and uses a placeholder key).
 
 ```bash
 uv sync                      # install dependencies
-./run.sh                     # start server on :8000 (web UI at /, API docs at /docs)
+./run.sh                     # start server on :8000 (web UI at /, API docs at /docs); with LLM_BASE_URL set, first checks Ollama is up and the model is pulled
 cd backend && uv run uvicorn app:app --reload --port 8000   # same, manually
 ```
 

@@ -29,16 +29,29 @@ All responses must be:
 Provide only the direct answer to what was asked.
 """
     
-    def __init__(self, api_key: str, model: str):
-        self.client = anthropic.Anthropic(api_key=api_key)
+    def __init__(self, api_key: str, model: str, base_url: Optional[str] = None):
+        if base_url:
+            # Local Anthropic-compatible server (e.g. Ollama): the SDK requires a key, the server ignores it
+            self.client = anthropic.Anthropic(api_key=api_key or "ollama", base_url=base_url)
+        else:
+            self.client = anthropic.Anthropic(api_key=api_key)
         self.model = model
-        
+
         # Pre-build base API parameters
         self.base_params = {
             "model": self.model,
             "temperature": 0,
             "max_tokens": 800
         }
+
+        # Local models may think by default, which spends the token budget and adds thinking blocks
+        if base_url:
+            self.base_params["thinking"] = {"type": "disabled"}
+
+    @staticmethod
+    def _extract_text(response) -> str:
+        """Join the text blocks of a response, skipping thinking/tool_use blocks"""
+        return "".join(block.text for block in response.content if block.type == "text")
     
     def generate_response(self, query: str,
                          conversation_history: Optional[str] = None,
@@ -84,7 +97,7 @@ Provide only the direct answer to what was asked.
             return self._handle_tool_execution(response, api_params, tool_manager)
         
         # Return direct response
-        return response.content[0].text
+        return self._extract_text(response)
     
     def _handle_tool_execution(self, initial_response, base_params: Dict[str, Any], tool_manager):
         """
@@ -132,4 +145,4 @@ Provide only the direct answer to what was asked.
         
         # Get final response
         final_response = self.client.messages.create(**final_params)
-        return final_response.content[0].text
+        return self._extract_text(final_response)
