@@ -240,9 +240,71 @@ header h1 {
     margin-bottom: 0.25rem;
 }
 
+/* One source per row, styled like the sidebar's suggested-question buttons */
 .sources-content {
-    padding: 0 0.5rem 0.25rem 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+    padding: 0.125rem 0 0.25rem 0;
+}
+
+.source-chip {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    background: var(--surface);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    color: var(--text-primary);
+    font-size: 0.8125rem;
+    line-height: 1.4;
+    text-decoration: none;
+    transition: all 0.2s ease;
+}
+
+.source-lesson {
+    flex-shrink: 0;
+    min-width: 4.75em; /* keeps course titles aligned for one- and two-digit lessons */
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+.source-course {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     color: var(--text-secondary);
+    transition: color 0.2s ease;
+}
+
+.source-icon {
+    flex-shrink: 0;
+    margin-left: auto;
+    color: var(--text-secondary);
+    transition: color 0.2s ease;
+}
+
+a.source-chip:hover {
+    background: var(--surface-hover);
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+    transform: translateX(2px);
+}
+
+a.source-chip:hover .source-course,
+a.source-chip:hover .source-icon {
+    color: var(--primary-color);
+}
+
+a.source-chip:focus {
+    outline: none;
+}
+
+a.source-chip:focus-visible {
+    box-shadow: 0 0 0 3px var(--focus-ring);
+    border-color: var(--primary-color);
 }
 
 /* Markdown formatting styles */

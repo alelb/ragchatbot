@@ -125,7 +125,7 @@ function addMessage(content, type, sources = null, isWelcome = false) {
         html += `
             <details class="sources-collapsible">
                 <summary class="sources-header">Sources</summary>
-                <div class="sources-content">${sources.join(', ')}</div>
+                <div class="sources-content">${sources.map(renderSource).join('')}</div>
             </details>
         `;
     }
@@ -135,6 +135,24 @@ function addMessage(content, type, sources = null, isWelcome = false) {
     chatMessages.scrollTop = chatMessages.scrollHeight;
     
     return messageId;
+}
+
+// Render a source as a chip linking to its lesson video (new tab), or a plain chip if it has no link
+function renderSource(source) {
+    // Source text is "<course title> - Lesson N"; show the lesson first, the course as secondary text
+    const match = source.text.match(/^(.*) - (Lesson \d+)$/);
+    const lesson = match ? match[2] : '';
+    const course = match ? match[1] : source.text;
+    const title = escapeHtml(source.text).replace(/"/g, '&quot;');
+    const label = (lesson ? `<span class="source-lesson">${escapeHtml(lesson)}</span>` : '')
+        + `<span class="source-course">${escapeHtml(course)}</span>`;
+
+    if (!source.url || !/^https?:\/\//i.test(source.url)) {
+        return `<span class="source-chip" title="${title}">${label}</span>`;
+    }
+    const href = escapeHtml(source.url).replace(/"/g, '&quot;');
+    return `<a class="source-chip" href="${href}" target="_blank" rel="noopener noreferrer" title="${title}">`
+        + `${label}<span class="source-icon" aria-hidden="true">↗</span></a>`;
 }
 
 // Helper function to escape HTML for user messages
