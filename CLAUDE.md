@@ -22,9 +22,9 @@ A course-materials RAG chatbot: FastAPI backend + vanilla JS frontend served as 
 
 **Query flow** — Retrieval is driven by Claude tool use, not by a fixed retrieve-then-generate step:
 1. `POST /api/query` (`app.py`) → `RAGSystem.query()` (`rag_system.py`), the orchestrator that wires all components.
-2. `AIGenerator.generate_response()` makes a first Claude call with the `search_course_content` tool available. Claude decides whether to search.
-3. If `stop_reason == "tool_use"`, `ToolManager` dispatches to `CourseSearchTool` → `VectorStore.search()`, then a second Claude call is made with the tool results and **no tools** — so at most one search round per query.
-4. Sources for the UI are not returned through the call chain: `CourseSearchTool` stores them in `last_sources` as a side effect, and `RAGSystem` reads and resets them via `ToolManager` after generation.
+2. `AIGenerator.generate_response()` makes a first Claude call with two tools available: `search_course_content` (chunk search) and `get_course_outline` (title, link and lesson list from `course_catalog`). Claude decides whether to call one.
+3. If `stop_reason == "tool_use"`, `ToolManager` dispatches to `CourseSearchTool` → `VectorStore.search()` or `CourseOutlineTool` → `VectorStore.get_course_outline()`, then a second Claude call is made with the tool results and **no tools** — so at most one tool round per query.
+4. Sources for the UI are not returned through the call chain: each tool stores them in `last_sources` as a side effect, and `RAGSystem` reads and resets them via `ToolManager` after generation.
 
 **Conversation history** is held in memory by `SessionManager` (lost on restart, last `MAX_HISTORY` exchanges) and injected as text into the **system prompt**, not as prior `messages`.
 

@@ -327,6 +327,16 @@ a.source-chip:focus-visible {
     line-height: 1.6;
 }
 
+/* Default link blue is unreadable on the dark bubble */
+.message-content a {
+    color: #60a5fa;
+    text-decoration: none;
+}
+
+.message-content a:hover {
+    text-decoration: underline;
+}
+
 .message-content ul,
 .message-content ol {
     margin: 0.5rem 0;
