@@ -3,9 +3,10 @@ const API_URL = '/api';
 
 // Global state
 let currentSessionId = null;
+let pendingQuery = null; // AbortController of the in-flight query, if any
 
 // DOM elements
-let chatMessages, chatInput, sendButton, totalCourses, courseTitles;
+let chatMessages, chatInput, sendButton, newChatButton, totalCourses, courseTitles;
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
@@ -13,6 +14,7 @@ document.addEventListener('DOMContentLoaded', () => {
     chatMessages = document.getElementById('chatMessages');
     chatInput = document.getElementById('chatInput');
     sendButton = document.getElementById('sendButton');
+    newChatButton = document.getElementById('newChatButton');
     totalCourses = document.getElementById('totalCourses');
     courseTitles = document.getElementById('courseTitles');
     
@@ -28,7 +30,9 @@ function setupEventListeners() {
     chatInput.addEventListener('keypress', (e) => {
         if (e.key === 'Enter') sendMessage();
     });
-    
+
+    // New chat
+    newChatButton.addEventListener('click', startNewChat);
     
     // Suggested questions
     document.querySelectorAll('.suggested-item').forEach(button => {
@@ -59,6 +63,9 @@ async function sendMessage() {
     chatMessages.appendChild(loadingMessage);
     chatMessages.scrollTop = chatMessages.scrollHeight;
 
+    const controller = new AbortController();
+    pendingQuery = controller;
+
     try {
         const response = await fetch(`${API_URL}/query`, {
             method: 'POST',
@@ -68,27 +75,29 @@ async function sendMessage() {
             body: JSON.stringify({
                 query: query,
                 session_id: currentSessionId
-            })
+            }),
+            signal: controller.signal
         });
 
         if (!response.ok) throw new Error('Query failed');
 
         const data = await response.json();
         
-        // Update session ID if new
-        if (!currentSessionId) {
-            currentSessionId = data.session_id;
-        }
+        // The backend may hand out a new session (first query, or the old one was unknown)
+        currentSessionId = data.session_id;
 
         // Replace loading message with response
         loadingMessage.remove();
         addMessage(data.answer, 'assistant', data.sources);
 
     } catch (error) {
+        // Aborted by "New chat": the chat was already reset, nothing to show
+        if (controller.signal.aborted) return;
         // Replace loading message with error
         loadingMessage.remove();
         addMessage(`Error: ${error.message}`, 'assistant');
     } finally {
+        if (pendingQuery === controller) pendingQuery = null;
         chatInput.disabled = false;
         sendButton.disabled = false;
         chatInput.focus();
@@ -168,6 +177,24 @@ async function createNewSession() {
     currentSessionId = null;
     chatMessages.innerHTML = '';
     addMessage('Welcome to the Course Materials Assistant! I can help you with questions about courses, lessons and specific content. What would you like to know?', 'assistant', null, true);
+}
+
+// Discard the current conversation (UI and backend history) and start over without reloading
+function startNewChat() {
+    if (pendingQuery) pendingQuery.abort();
+
+    const oldSessionId = currentSessionId;
+    if (oldSessionId) {
+        // Best-effort cleanup; the chat resets even if this fails
+        fetch(`${API_URL}/session/${encodeURIComponent(oldSessionId)}`, { method: 'DELETE' })
+            .catch(error => console.error('Error deleting session:', error));
+    }
+
+    createNewSession();
+    chatInput.value = '';
+    chatInput.disabled = false;
+    sendButton.disabled = false;
+    chatInput.focus();
 }
 
 // Load course statistics

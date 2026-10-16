@@ -62,9 +62,9 @@ class CourseStats(BaseModel):
 async def query_documents(request: QueryRequest):
     """Process a query and return response with sources"""
     try:
-        # Create session if not provided
+        # Create session if not provided or no longer known (server restart, deleted by "New chat")
         session_id = request.session_id
-        if not session_id:
+        if not session_id or not rag_system.session_manager.has_session(session_id):
             session_id = rag_system.session_manager.create_session()
         
         # Process query using RAG system
@@ -77,6 +77,11 @@ async def query_documents(request: QueryRequest):
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/session/{session_id}", status_code=204)
+async def delete_session(session_id: str):
+    """Discard a session's conversation history (used by "New chat")"""
+    rag_system.session_manager.delete_session(session_id)
 
 @app.get("/api/courses", response_model=CourseStats)
 async def get_course_stats():

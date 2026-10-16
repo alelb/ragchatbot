@@ -15,6 +15,10 @@ class SessionManager:
         self.sessions: Dict[str, List[Message]] = {}
         self.session_counter = 0
     
+    def has_session(self, session_id: str) -> bool:
+        """Whether a session exists (it may be unknown after a restart or a "New chat")"""
+        return session_id in self.sessions
+
     def create_session(self) -> str:
         """Create a new conversation session"""
         self.session_counter += 1
@@ -23,9 +27,9 @@ class SessionManager:
         return session_id
     
     def add_message(self, session_id: str, role: str, content: str):
-        """Add a message to the conversation history"""
+        """Add a message to the conversation history (ignored for unknown or deleted sessions)"""
         if session_id not in self.sessions:
-            self.sessions[session_id] = []
+            return
         
         message = Message(role=role, content=content)
         self.sessions[session_id].append(message)
@@ -59,3 +63,7 @@ class SessionManager:
         """Clear all messages from a session"""
         if session_id in self.sessions:
             self.sessions[session_id] = []
+
+    def delete_session(self, session_id: str):
+        """Remove a session and its history entirely"""
+        self.sessions.pop(session_id, None)

@@ -508,6 +508,7 @@ a.source-chip:focus-visible {
 }
 
 /* Sidebar Headers */
+.new-chat-button,
 .stats-header,
 .suggested-header {
     font-size: 0.875rem;
@@ -524,11 +525,13 @@ a.source-chip:focus-visible {
     letter-spacing: 0.5px;
 }
 
+.new-chat-button:focus,
 .stats-header:focus,
 .suggested-header:focus {
     color: var(--primary-color);
 }
 
+.new-chat-button:hover,
 .stats-header:hover,
 .suggested-header:hover {
     color: var(--primary-color);
@@ -551,6 +554,19 @@ a.source-chip:focus-visible {
 details[open] .stats-header::before,
 details[open] .suggested-header::before {
     transform: rotate(90deg);
+}
+
+/* Buttons don't inherit the page font by default */
+.new-chat-button {
+    font-family: inherit;
+    display: block;
+    width: 100%;
+    text-align: left;
+}
+
+.new-chat-button:disabled {
+    cursor: default;
+    opacity: 0.5;
 }
 
 /* Course Stats in Sidebar */
