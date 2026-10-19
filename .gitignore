@@ -34,3 +34,6 @@ Thumbs.db
 
 # Git worktrees
 .trees/
+
+# Playwright MCP output (snapshots, console logs)
+.playwright-mcp/
