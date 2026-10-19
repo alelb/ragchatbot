@@ -3,9 +3,9 @@ import urllib.request
 from unittest.mock import MagicMock
 
 import pytest
+from conftest import MCP_COURSE, make_response, make_text, make_tool_use
 
 from rag_system import RAGSystem
-from conftest import make_response, make_text, make_tool_use, MCP_COURSE
 
 CONTENT_QUESTION = "What problem does MCP solve according to lesson 1?"
 
@@ -27,10 +27,20 @@ def calls(rag):
 
 def search_then_answer(answer="MCP standardizes how apps give context to LLMs."):
     return (
-        make_response("tool_use", [make_tool_use(
-            "toolu_1", "search_course_content",
-            {"query": "what problem does MCP solve", "course_name": "MCP", "lesson_number": 1},
-        )]),
+        make_response(
+            "tool_use",
+            [
+                make_tool_use(
+                    "toolu_1",
+                    "search_course_content",
+                    {
+                        "query": "what problem does MCP solve",
+                        "course_name": "MCP",
+                        "lesson_number": 1,
+                    },
+                )
+            ],
+        ),
         make_response("end_turn", [make_text(answer)]),
     )
 
@@ -51,17 +61,22 @@ class TestContentQuery:
         script(rag, *search_then_answer())
         answer, sources = rag.query(CONTENT_QUESTION)
         assert answer == "MCP standardizes how apps give context to LLMs."
-        assert sources == [{
-            "text": f"{MCP_COURSE} - Lesson 1",
-            "url": "https://learn.deeplearning.ai/courses/mcp-build-rich-context-ai-apps-with-anthropic/lesson/ccsd0/why-mcp",
-        }]
+        assert sources == [
+            {
+                "text": f"{MCP_COURSE} - Lesson 1",
+                "url": "https://learn.deeplearning.ai/courses/mcp-build-rich-context-ai-apps-with-anthropic/lesson/ccsd0/why-mcp",
+            }
+        ]
 
     def test_user_query_reaches_the_model(self, rag):
         script(rag, *search_then_answer())
         rag.query(CONTENT_QUESTION)
         first = calls(rag)[0]
         assert CONTENT_QUESTION in first["messages"][0]["content"]
-        assert {t["name"] for t in first["tools"]} == {"search_course_content", "get_course_outline"}
+        assert {t["name"] for t in first["tools"]} == {
+            "search_course_content",
+            "get_course_outline",
+        }
 
     def test_sources_are_reset_after_query(self, rag):
         script(rag, *search_then_answer(), *general_answer())
@@ -77,9 +92,12 @@ class TestContentQuery:
         assert len(calls(rag)) == 1
 
     def test_sources_do_not_leak_after_failed_query(self, rag):
-        script(rag,
-               search_then_answer()[0], RuntimeError("LLM connection dropped"),
-               *general_answer())
+        script(
+            rag,
+            search_then_answer()[0],
+            RuntimeError("LLM connection dropped"),
+            *general_answer(),
+        )
         with pytest.raises(RuntimeError):
             rag.query(CONTENT_QUESTION)
         _, sources = rag.query("What is the capital of France?")
@@ -88,16 +106,35 @@ class TestContentQuery:
 
 class TestSequentialToolCalls:
     def test_outline_then_search_returns_sources_of_both(self, rag):
-        script(rag,
-               make_response("tool_use", [make_tool_use("t1", "get_course_outline", {"course_name": "MCP"})]),
-               make_response("tool_use", [make_tool_use("t2", "search_course_content", {"query": "Creating An MCP Server"})]),
-               make_response("end_turn", [make_text("Lesson 4 is about building an MCP server.")]))
+        script(
+            rag,
+            make_response(
+                "tool_use",
+                [make_tool_use("t1", "get_course_outline", {"course_name": "MCP"})],
+            ),
+            make_response(
+                "tool_use",
+                [
+                    make_tool_use(
+                        "t2",
+                        "search_course_content",
+                        {"query": "Creating An MCP Server"},
+                    )
+                ],
+            ),
+            make_response(
+                "end_turn", [make_text("Lesson 4 is about building an MCP server.")]
+            ),
+        )
         answer, sources = rag.query("What does lesson 4 of the MCP course cover?")
 
         assert answer == "Lesson 4 is about building an MCP server."
         assert len(calls(rag)) == 3
         # Round 2 sees the real outline, including lesson 4's title
-        assert "Lesson 4: Creating An MCP Server" in calls(rag)[1]["messages"][-1]["content"][0]["content"]
+        assert (
+            "Lesson 4: Creating An MCP Server"
+            in calls(rag)[1]["messages"][-1]["content"][0]["content"]
+        )
         assert sources[0]["text"] == MCP_COURSE
         assert sources[0]["url"].startswith("https://")
         assert any(" - Lesson " in s["text"] for s in sources[1:])
@@ -107,7 +144,9 @@ class TestSequentialToolCalls:
 class TestSessionHistory:
     def test_exchange_is_recorded_and_sent_next_time(self, rag):
         session_id = rag.session_manager.create_session()
-        script(rag, *search_then_answer("First answer."), *general_answer("Second answer."))
+        script(
+            rag, *search_then_answer("First answer."), *general_answer("Second answer.")
+        )
         rag.query(CONTENT_QUESTION, session_id)
         rag.query("And lesson 2?", session_id)
         system = calls(rag)[-1]["system"]
@@ -123,6 +162,7 @@ def test_course_analytics(rag):
 
 # --- Live: the LLM configured in .env decides on its own whether to search ---
 
+
 def _llm_reachable(cfg):
     if cfg.LLM_BASE_URL:
         try:
@@ -134,13 +174,17 @@ def _llm_reachable(cfg):
 
 
 @pytest.mark.live
-@pytest.mark.parametrize("question", [
-    CONTENT_QUESTION,
-    "What is covered in lesson 1 of the MCP course?",
-    "How does query expansion work in the Chroma retrieval course?",
-])
+@pytest.mark.parametrize(
+    "question",
+    [
+        CONTENT_QUESTION,
+        "What is covered in lesson 1 of the MCP course?",
+        "How does query expansion work in the Chroma retrieval course?",
+    ],
+)
 def test_live_content_question_uses_search_tool(chroma_copy, question):
     from config import config
+
     if not _llm_reachable(config):
         pytest.skip("configured LLM not reachable")
     rag = RAGSystem(dataclasses.replace(config, CHROMA_PATH=str(chroma_copy)))
@@ -148,14 +192,18 @@ def test_live_content_question_uses_search_tool(chroma_copy, question):
 
     answer, sources = rag.query(question)
 
-    print(f"\nQ: {question}\nTool calls: {rag.tool_manager.execute_tool.call_args_list}\nA: {answer!r}\nSources: {sources}")
+    print(
+        f"\nQ: {question}\nTool calls: {rag.tool_manager.execute_tool.call_args_list}\nA: {answer!r}\nSources: {sources}"
+    )
     assert rag.tool_manager.execute_tool.called, "model answered without searching"
     assert answer.strip(), "empty answer"
     assert sources, "no sources returned"
 
 
-TWO_STEP_QUESTION = ("Search for a course that discusses the same topic as lesson 4 "
-                     "of the 'Advanced Retrieval for AI with Chroma' course")
+TWO_STEP_QUESTION = (
+    "Search for a course that discusses the same topic as lesson 4 "
+    "of the 'Advanced Retrieval for AI with Chroma' course"
+)
 
 
 @pytest.mark.live
@@ -166,6 +214,7 @@ def test_live_two_step_question_makes_sequential_tool_calls(chroma_copy):
     May be flaky: a small model can stop after one call or reuse the first call's filters.
     """
     from config import config
+
     if not _llm_reachable(config):
         pytest.skip("configured LLM not reachable")
     rag = RAGSystem(dataclasses.replace(config, CHROMA_PATH=str(chroma_copy)))
@@ -176,13 +225,20 @@ def test_live_two_step_question_makes_sequential_tool_calls(chroma_copy):
     answer, sources = rag.query(TWO_STEP_QUESTION)
 
     tool_calls = rag.tool_manager.execute_tool.call_args_list
-    print(f"\nQ: {TWO_STEP_QUESTION}\nTool calls: {tool_calls}\n"
-          f"API calls: {client.messages.create.call_count}\nA: {answer!r}\nSources: {sources}")
+    print(
+        f"\nQ: {TWO_STEP_QUESTION}\nTool calls: {tool_calls}\n"
+        f"API calls: {client.messages.create.call_count}\nA: {answer!r}\nSources: {sources}"
+    )
     assert len(tool_calls) == 2, "model did not make two tool calls"
     # One call per round (not two parallel calls), then the final answer without tools
     assert client.messages.create.call_count == 3
-    name, query = tool_calls[1].args[0], str(tool_calls[1].kwargs.get("query", "")).lower()
+    name, query = (
+        tool_calls[1].args[0],
+        str(tool_calls[1].kwargs.get("query", "")).lower(),
+    )
     assert name == "search_course_content"
-    assert any(word in query for word in ("rank", "cross", "encoder")), "round 2 did not use lesson 4's title"
+    assert any(
+        word in query for word in ("rank", "cross", "encoder")
+    ), "round 2 did not use lesson 4's title"
     assert answer.strip(), "empty answer"
     assert sources, "no sources returned"

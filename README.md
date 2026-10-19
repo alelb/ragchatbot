@@ -70,3 +70,12 @@ The application will be available at:
 - Web Interface: `http://localhost:8000`
 - API Documentation: `http://localhost:8000/docs`
 
+
+## Development
+
+Code is formatted with [black](https://black.readthedocs.io/) and linted with [ruff](https://docs.astral.sh/ruff/) (config in `pyproject.toml`).
+
+```bash
+./scripts/format.sh   # fix import order and format the code in place
+./scripts/check.sh    # formatting check + lint + tests (what to run before committing)
+```
