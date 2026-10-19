@@ -6,7 +6,7 @@ let currentSessionId = null;
 let pendingQuery = null; // AbortController of the in-flight query, if any
 
 // DOM elements
-let chatMessages, chatInput, sendButton, newChatButton, totalCourses, courseTitles;
+let chatMessages, chatInput, sendButton, newChatButton, themeToggle, totalCourses, courseTitles;
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
@@ -15,9 +15,11 @@ document.addEventListener('DOMContentLoaded', () => {
     chatInput = document.getElementById('chatInput');
     sendButton = document.getElementById('sendButton');
     newChatButton = document.getElementById('newChatButton');
+    themeToggle = document.getElementById('themeToggle');
     totalCourses = document.getElementById('totalCourses');
     courseTitles = document.getElementById('courseTitles');
     
+    updateThemeToggle();
     setupEventListeners();
     createNewSession();
     loadCourseStats();
@@ -33,6 +35,9 @@ function setupEventListeners() {
 
     // New chat
     newChatButton.addEventListener('click', startNewChat);
+
+    // Theme toggle (a native <button>, so Enter/Space already activate it)
+    themeToggle.addEventListener('click', toggleTheme);
     
     // Suggested questions
     document.querySelectorAll('.suggested-item').forEach(button => {
@@ -195,6 +200,37 @@ function startNewChat() {
     chatInput.disabled = false;
     sendButton.disabled = false;
     chatInput.focus();
+}
+
+// Theme Functions
+// The theme is stored as data-theme on <html>; dark is the default when nothing is saved
+function getTheme() {
+    return document.documentElement.dataset.theme === 'light' ? 'light' : 'dark';
+}
+
+function toggleTheme() {
+    const root = document.documentElement;
+    const next = getTheme() === 'light' ? 'dark' : 'light';
+
+    // Animate colors only during the switch
+    root.classList.add('theme-transition');
+    root.dataset.theme = next;
+    clearTimeout(toggleTheme.timer);
+    toggleTheme.timer = setTimeout(() => root.classList.remove('theme-transition'), 300);
+
+    try {
+        localStorage.setItem('theme', next);
+    } catch (e) {
+        // Storage unavailable (e.g. private mode): the theme just isn't remembered
+    }
+    updateThemeToggle();
+}
+
+// Keep the button's accessible name in sync with the action it performs
+function updateThemeToggle() {
+    const label = getTheme() === 'light' ? 'Switch to dark theme' : 'Switch to light theme';
+    themeToggle.setAttribute('aria-label', label);
+    themeToggle.title = label;
 }
 
 // Load course statistics
