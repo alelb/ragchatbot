@@ -85,6 +85,7 @@ def test_config(chroma_copy):
 
 # FastAPI app
 
+
 @pytest.fixture
 def mock_rag():
     """RAGSystem stand-in for the API: mocked query/analytics, real SessionManager"""
@@ -109,8 +110,9 @@ def api_client(mock_rag, monkeypatch):
     import importlib
     import sys
 
-    import rag_system
     from fastapi.testclient import TestClient
+
+    import rag_system
 
     monkeypatch.chdir(BACKEND_DIR)
     monkeypatch.setattr(rag_system, "RAGSystem", lambda config: mock_rag)

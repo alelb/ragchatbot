@@ -1,11 +1,12 @@
 import pytest
-
 from conftest import MCP_COURSE
 
 
 class TestQueryEndpoint:
     def test_returns_answer_sources_and_new_session(self, api_client, mock_rag):
-        sources = [{"text": f"{MCP_COURSE} - Lesson 1", "url": "https://example.com/l1"}]
+        sources = [
+            {"text": f"{MCP_COURSE} - Lesson 1", "url": "https://example.com/l1"}
+        ]
         mock_rag.query.return_value = ("MCP standardizes context.", sources)
 
         response = api_client.post("/api/query", json={"query": "What is MCP?"})
@@ -27,18 +28,24 @@ class TestQueryEndpoint:
     def test_reuses_known_session(self, api_client, mock_rag):
         session_id = mock_rag.session_manager.create_session()
 
-        body = api_client.post("/api/query", json={"query": "q", "session_id": session_id}).json()
+        body = api_client.post(
+            "/api/query", json={"query": "q", "session_id": session_id}
+        ).json()
 
         assert body["session_id"] == session_id
         mock_rag.query.assert_called_once_with("q", session_id)
 
     def test_unknown_session_gets_a_new_one(self, api_client, mock_rag):
-        body = api_client.post("/api/query", json={"query": "q", "session_id": "session_999"}).json()
+        body = api_client.post(
+            "/api/query", json={"query": "q", "session_id": "session_999"}
+        ).json()
 
         assert body["session_id"] != "session_999"
         assert mock_rag.session_manager.has_session(body["session_id"])
 
-    @pytest.mark.parametrize("payload", [{}, {"query": 42}, {"session_id": "session_1"}])
+    @pytest.mark.parametrize(
+        "payload", [{}, {"query": 42}, {"session_id": "session_1"}]
+    )
     def test_invalid_request_is_rejected(self, api_client, mock_rag, payload):
         response = api_client.post("/api/query", json=payload)
 
@@ -64,10 +71,16 @@ class TestCoursesEndpoint:
         response = api_client.get("/api/courses")
 
         assert response.status_code == 200
-        assert response.json() == {"total_courses": 2, "course_titles": [MCP_COURSE, "Another Course"]}
+        assert response.json() == {
+            "total_courses": 2,
+            "course_titles": [MCP_COURSE, "Another Course"],
+        }
 
     def test_empty_catalog(self, api_client):
-        assert api_client.get("/api/courses").json() == {"total_courses": 0, "course_titles": []}
+        assert api_client.get("/api/courses").json() == {
+            "total_courses": 0,
+            "course_titles": [],
+        }
 
     def test_analytics_failure_returns_500(self, api_client, mock_rag):
         mock_rag.get_course_analytics.side_effect = RuntimeError("chroma down")
