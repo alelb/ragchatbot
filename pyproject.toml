@@ -16,6 +16,7 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "httpx>=0.28.1",
     "pytest>=9.1.1",
 ]
 
@@ -25,4 +26,8 @@ pythonpath = ["backend"]
 addopts = "-m 'not live'"
 markers = [
     "live: calls the real LLM configured in .env (run with -m live)",
+]
+filterwarnings = [
+    # app.py still registers its startup hook with @app.on_event
+    "ignore:\\s*on_event is deprecated:DeprecationWarning",
 ]

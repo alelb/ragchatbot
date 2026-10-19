@@ -80,3 +80,40 @@ def test_config(chroma_copy):
         COURSE_MATCH_MAX_DISTANCE=1.25,
         CHROMA_PATH=str(chroma_copy),
     )
+
+
+# FastAPI app
+
+@pytest.fixture
+def mock_rag():
+    """RAGSystem stand-in for the API: mocked query/analytics, real SessionManager"""
+    from rag_system import RAGSystem
+    from session_manager import SessionManager
+
+    rag = MagicMock(spec=RAGSystem)
+    rag.session_manager = SessionManager(max_history=2)
+    rag.query.return_value = ("An answer.", [])
+    rag.get_course_analytics.return_value = {"total_courses": 0, "course_titles": []}
+    return rag
+
+
+@pytest.fixture
+def api_client(mock_rag, monkeypatch):
+    """TestClient over the real app.py, imported with RAGSystem replaced by mock_rag.
+
+    app.py builds its RAGSystem and mounts ../frontend at import time, relative to
+    the cwd, so it is imported fresh from backend/. The client is not used as a
+    context manager, so the startup event (ingestion of docs/) does not run.
+    """
+    import importlib
+    import sys
+
+    import rag_system
+    from fastapi.testclient import TestClient
+
+    monkeypatch.chdir(BACKEND_DIR)
+    monkeypatch.setattr(rag_system, "RAGSystem", lambda config: mock_rag)
+    monkeypatch.delitem(sys.modules, "app", raising=False)
+    app_module = importlib.import_module("app")
+    yield TestClient(app_module.app)
+    sys.modules.pop("app", None)
