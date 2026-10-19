@@ -1,7 +1,8 @@
 import re
-from typing import Dict, Any, Optional, Protocol
 from abc import ABC, abstractmethod
-from vector_store import VectorStore, SearchResults
+from typing import Any, Dict, Optional
+
+from vector_store import SearchResults, VectorStore
 
 
 class ToolError(str):
@@ -10,12 +11,12 @@ class ToolError(str):
 
 class Tool(ABC):
     """Abstract base class for all tools"""
-    
+
     @abstractmethod
     def get_tool_definition(self) -> Dict[str, Any]:
         """Return Anthropic tool definition for this tool"""
         pass
-    
+
     @abstractmethod
     def execute(self, **kwargs) -> str:
         """Execute the tool with given parameters"""
@@ -24,11 +25,11 @@ class Tool(ABC):
 
 class CourseSearchTool(Tool):
     """Tool for searching course content with semantic course name matching"""
-    
+
     def __init__(self, vector_store: VectorStore):
         self.store = vector_store
         self.last_sources = []  # Track sources from last search
-    
+
     def get_tool_definition(self) -> Dict[str, Any]:
         """Return Anthropic tool definition for this tool"""
         return {
@@ -38,48 +39,51 @@ class CourseSearchTool(Tool):
                 "type": "object",
                 "properties": {
                     "query": {
-                        "type": "string", 
-                        "description": "What to search for in the course content"
+                        "type": "string",
+                        "description": "What to search for in the course content",
                     },
                     "course_name": {
                         "type": "string",
-                        "description": "Course title (partial matches work, e.g. 'MCP', 'Chroma'); omit to search all courses"
+                        "description": "Course title (partial matches work, e.g. 'MCP', 'Chroma'); omit to search all courses",
                     },
                     "lesson_number": {
                         "type": "integer",
-                        "description": "Specific lesson number to search within (e.g. 1, 2, 3)"
-                    }
+                        "description": "Specific lesson number to search within (e.g. 1, 2, 3)",
+                    },
                 },
-                "required": ["query"]
-            }
+                "required": ["query"],
+            },
         }
-    
-    def execute(self, query: str, course_name: Optional[str] = None, lesson_number: Optional[int] = None) -> str:
+
+    def execute(
+        self,
+        query: str,
+        course_name: Optional[str] = None,
+        lesson_number: Optional[int] = None,
+    ) -> str:
         """
         Execute the search tool with given parameters.
-        
+
         Args:
             query: What to search for
             course_name: Optional course filter
             lesson_number: Optional lesson filter
-            
+
         Returns:
             Formatted search results or error message
         """
-        
+
         # Use the vector store's unified search interface
         results = self.store.search(
-            query=query,
-            course_name=course_name,
-            lesson_number=lesson_number
+            query=query, course_name=course_name, lesson_number=lesson_number
         )
-        
+
         # Handle errors: an unknown course is a normal result the model can retry, a store failure is not
         if results.error:
             if results.error.startswith("Search error"):
                 return ToolError(results.error)
             return results.error
-        
+
         # Handle empty results
         if results.is_empty():
             filter_info = ""
@@ -88,10 +92,10 @@ class CourseSearchTool(Tool):
             if lesson_number is not None:
                 filter_info += f" in lesson {lesson_number}"
             return f"No relevant content found{filter_info}."
-        
+
         # Format and return results
         return self._format_results(results)
-    
+
     def _format_results(self, results: SearchResults) -> str:
         """Format search results with course and lesson context"""
         formatted = []
@@ -99,8 +103,8 @@ class CourseSearchTool(Tool):
         seen = set()
 
         for doc, meta in zip(results.documents, results.metadata):
-            course_title = meta.get('course_title', 'unknown')
-            lesson_num = meta.get('lesson_number')
+            course_title = meta.get("course_title", "unknown")
+            lesson_num = meta.get("lesson_number")
 
             # Build context header
             header = f"[{course_title}"
@@ -121,10 +125,10 @@ class CourseSearchTool(Tool):
                 sources.append({"text": source_text, "url": url})
 
             formatted.append(f"{header}\n{doc}")
-        
+
         # Store sources for retrieval
         self.last_sources = sources
-        
+
         return "\n\n".join(formatted)
 
 
@@ -145,11 +149,11 @@ class CourseOutlineTool(Tool):
                 "properties": {
                     "course_name": {
                         "type": "string",
-                        "description": "Course title (partial matches work, e.g. 'MCP', 'Chroma')"
+                        "description": "Course title (partial matches work, e.g. 'MCP', 'Chroma')",
                     }
                 },
-                "required": ["course_name"]
-            }
+                "required": ["course_name"],
+            },
         }
 
     def execute(self, course_name: str) -> str:
@@ -169,24 +173,26 @@ class CourseOutlineTool(Tool):
         lines = [
             f"Course: {outline['title']}",
             f"Course Link: {outline['course_link'] or 'not available'}",
-            f"Lessons ({len(outline['lessons'])}):"
+            f"Lessons ({len(outline['lessons'])}):",
         ]
-        for lesson in outline['lessons']:
+        for lesson in outline["lessons"]:
             lines.append(f"Lesson {lesson['lesson_number']}: {lesson['lesson_title']}")
 
         # Store the course as the source for the UI
-        self.last_sources = [{"text": outline['title'], "url": outline['course_link']}]
+        self.last_sources = [{"text": outline["title"], "url": outline["course_link"]}]
 
         return "\n".join(lines)
 
 
 class ToolManager:
     """Manages available tools for the AI"""
-    
+
     def __init__(self):
         self.tools = {}
-        self.sources = []  # Sources of all successful calls since the last reset, in call order
-    
+        self.sources = (
+            []
+        )  # Sources of all successful calls since the last reset, in call order
+
     def register_tool(self, tool: Tool):
         """Register any tool that implements the Tool interface"""
         tool_def = tool.get_tool_definition()
@@ -195,11 +201,10 @@ class ToolManager:
             raise ValueError("Tool must have a 'name' in its definition")
         self.tools[tool_name] = tool
 
-    
     def get_tool_definitions(self) -> list:
         """Get all tool definitions for Anthropic tool calling"""
         return [tool.get_tool_definition() for tool in self.tools.values()]
-    
+
     def execute_tool(self, tool_name: str, **kwargs) -> str:
         """Execute a tool by name with given parameters"""
         if tool_name not in self.tools:
@@ -214,7 +219,7 @@ class ToolManager:
             if name in properties
         }
         # Clear the tool's own sources so an early return can't leave those of a previous call
-        if hasattr(tool, 'last_sources'):
+        if hasattr(tool, "last_sources"):
             tool.last_sources = []
         try:
             result = tool.execute(**args)
@@ -222,7 +227,7 @@ class ToolManager:
             return ToolError(f"Error executing tool '{tool_name}': {e}")
 
         if not isinstance(result, ToolError):
-            for source in getattr(tool, 'last_sources', []):
+            for source in getattr(tool, "last_sources", []):
                 if source not in self.sources:
                     self.sources.append(source)
         return result
@@ -235,10 +240,14 @@ class ToolManager:
                 return int(value)
             if isinstance(value, float) and value.is_integer():
                 return int(value)
-        elif schema_type == "string" and isinstance(value, (int, float)) and not isinstance(value, bool):
+        elif (
+            schema_type == "string"
+            and isinstance(value, (int, float))
+            and not isinstance(value, bool)
+        ):
             return str(value)
         return value
-    
+
     def get_last_sources(self) -> list:
         """Get the sources of all tool calls since the last reset, without duplicates"""
         return list(self.sources)
@@ -247,5 +256,5 @@ class ToolManager:
         """Reset sources from all tools that track sources"""
         self.sources = []
         for tool in self.tools.values():
-            if hasattr(tool, 'last_sources'):
+            if hasattr(tool, "last_sources"):
                 tool.last_sources = []

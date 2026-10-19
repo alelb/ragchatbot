@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from vector_store import VectorStore, SearchResults
+from vector_store import SearchResults, VectorStore
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent
 LIVE_CHROMA_PATH = BACKEND_DIR / "chroma_db"
@@ -15,6 +15,7 @@ MCP_COURSE = "MCP: Build Rich-Context AI Apps with Anthropic"
 
 
 # Fake Anthropic SDK objects: only the attributes AIGenerator reads
+
 
 def make_text(text):
     return SimpleNamespace(type="text", text=text)

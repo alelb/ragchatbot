@@ -17,7 +17,12 @@ uv run pytest                # offline tests in backend/tests (mocked LLM, copy 
 uv run pytest -m live -s     # also hit the LLM configured in .env
 ```
 
-There is no linter or build step configured. `main.py` at the root is an unused uv placeholder.
+```bash
+./scripts/format.sh          # ruff --fix (import order, unused imports) + black, in place
+./scripts/check.sh           # black --check + ruff check + pytest; extra args go to pytest
+```
+
+Code style is black (88 cols) plus ruff lint rules `E,F,I,B`, configured in `pyproject.toml`; run `./scripts/format.sh` before committing so `check.sh` passes. There is no build step. `main.py` at the root is an unused uv placeholder.
 
 The server must be started from `backend/`: `app.py` uses relative paths `../docs` and `../frontend`, and ChromaDB persists to `backend/chroma_db/`.
 
