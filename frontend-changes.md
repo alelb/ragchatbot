@@ -5,7 +5,7 @@ Users can switch between the existing dark theme and a new light theme with a ro
 ## `frontend/index.html`
 - A small inline script in `<head>` reads the saved theme and sets `data-theme` on `<html>` before the stylesheet loads, so the page never flashes the wrong theme on reload. If storage is unavailable, the error is caught and the page uses the default theme.
 - A new `<button id="themeToggle" class="theme-toggle">` placed before `.container`. It holds two inline SVG icons, a sun and a moon, both marked `aria-hidden="true"`.
-- Cache-busting versions bumped: `style.css?v=14`, `script.js?v=13`.
+- Cache-busting versions bumped: `style.css?v=15`, `script.js?v=13`.
 
 ## `frontend/style.css`
 - **New variables in `:root` (dark):** `--link-color`, `--code-bg`, `--error-color`, `--success-color`, plus `color-scheme: dark`. These replace colors that were hardcoded before: the link blue `#60a5fa`, the code background `rgba(0,0,0,.2)`, and the error/success text colors.
@@ -17,6 +17,7 @@ Users can switch between the existing dark theme and a new light theme with a ro
   - `color-scheme: light`, so native scrollbars and form controls follow the theme.
 - **Smooth theme switch:** `html.theme-transition *` cross-fades background, text, border and shadow colors over 0.3s. The class is only present while the switch happens, so it doesn't slow down the existing hover transitions.
 - **`.theme-toggle`:** a 40px circle using `--surface`, `--border-color` and `--shadow`. Hover, active and focus states match the other buttons: a primary-colored border and text, a 1px lift, and a `--focus-ring` shown on `:focus-visible`. The two icons sit on top of each other, and the hidden one rotates and shrinks out (0.4s). The dark theme shows the sun, which means "switch to light"; the light theme shows the moon.
+- **Closed `<details>` content uses `display: none`:** Chromium hides it with `content-visibility: hidden` by default. That keeps the old theme's styles, so opening "Try asking:" (or "Courses", or a message's sources) after a switch briefly faded from the old colors. With `display: none`, the content opens directly in the current theme.
 - **`prefers-reduced-motion: reduce`** turns off the toggle and theme transitions.
 - **Fix:** the `blockquote` border used `var(--primary)`, which doesn't exist. It now uses `var(--primary-color)`.
 
