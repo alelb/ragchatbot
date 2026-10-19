@@ -1,3 +1,4 @@
+import re
 from typing import Dict, Any, Optional, Protocol
 from abc import ABC, abstractmethod
 from vector_store import VectorStore, SearchResults
@@ -38,7 +39,7 @@ class CourseSearchTool(Tool):
                     },
                     "course_name": {
                         "type": "string",
-                        "description": "Course title (partial matches work, e.g. 'MCP', 'Introduction')"
+                        "description": "Course title (partial matches work, e.g. 'MCP', 'Chroma')"
                     },
                     "lesson_number": {
                         "type": "integer",
@@ -78,7 +79,7 @@ class CourseSearchTool(Tool):
             filter_info = ""
             if course_name:
                 filter_info += f" in course '{course_name}'"
-            if lesson_number:
+            if lesson_number is not None:
                 filter_info += f" in lesson {lesson_number}"
             return f"No relevant content found{filter_info}."
         
@@ -138,7 +139,7 @@ class CourseOutlineTool(Tool):
                 "properties": {
                     "course_name": {
                         "type": "string",
-                        "description": "Course title (partial matches work, e.g. 'MCP', 'Introduction')"
+                        "description": "Course title (partial matches work, e.g. 'MCP', 'Chroma')"
                     }
                 },
                 "required": ["course_name"]
@@ -196,8 +197,31 @@ class ToolManager:
         """Execute a tool by name with given parameters"""
         if tool_name not in self.tools:
             return f"Tool '{tool_name}' not found"
-        
-        return self.tools[tool_name].execute(**kwargs)
+
+        tool = self.tools[tool_name]
+        # Arguments come from the model, which may add unknown keys or send wrong types
+        properties = tool.get_tool_definition()["input_schema"].get("properties", {})
+        args = {
+            name: self._coerce(value, properties[name].get("type"))
+            for name, value in kwargs.items()
+            if name in properties
+        }
+        try:
+            return tool.execute(**args)
+        except Exception as e:
+            return f"Error executing tool '{tool_name}': {e}"
+
+    @staticmethod
+    def _coerce(value: Any, schema_type: Optional[str]) -> Any:
+        """Convert a scalar to its JSON schema type when that is unambiguous, e.g. "1" -> 1"""
+        if schema_type == "integer":
+            if isinstance(value, str) and re.fullmatch(r"\s*-?\d+\s*", value):
+                return int(value)
+            if isinstance(value, float) and value.is_integer():
+                return int(value)
+        elif schema_type == "string" and isinstance(value, (int, float)) and not isinstance(value, bool):
+            return str(value)
+        return value
     
     def get_last_sources(self) -> list:
         """Get sources from the last search operation"""

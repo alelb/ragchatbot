@@ -12,7 +12,12 @@ uv sync                      # install dependencies
 cd backend && uv run uvicorn app:app --reload --port 8000   # same, manually
 ```
 
-There are no tests, linter, or build step configured. `main.py` at the root is an unused uv placeholder.
+```bash
+uv run pytest                # offline tests in backend/tests (mocked LLM, copy of backend/chroma_db)
+uv run pytest -m live -s     # also hit the LLM configured in .env
+```
+
+There is no linter or build step configured. `main.py` at the root is an unused uv placeholder.
 
 The server must be started from `backend/`: `app.py` uses relative paths `../docs` and `../frontend`, and ChromaDB persists to `backend/chroma_db/`.
 

@@ -23,6 +23,7 @@ class Config:
     CHUNK_OVERLAP: int = 100     # Characters to overlap between chunks
     MAX_RESULTS: int = 5         # Maximum search results to return
     MAX_HISTORY: int = 2         # Number of conversation messages to remember
+    COURSE_MATCH_MAX_DISTANCE: float = 1.25  # Max embedding distance for a fuzzy course name to match a title
     
     # Database paths
     CHROMA_PATH: str = "./chroma_db"  # ChromaDB storage location

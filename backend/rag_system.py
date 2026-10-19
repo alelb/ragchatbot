@@ -15,7 +15,8 @@ class RAGSystem:
         
         # Initialize core components
         self.document_processor = DocumentProcessor(config.CHUNK_SIZE, config.CHUNK_OVERLAP)
-        self.vector_store = VectorStore(config.CHROMA_PATH, config.EMBEDDING_MODEL, config.MAX_RESULTS)
+        self.vector_store = VectorStore(config.CHROMA_PATH, config.EMBEDDING_MODEL, config.MAX_RESULTS,
+                                        config.COURSE_MATCH_MAX_DISTANCE)
         self.ai_generator = AIGenerator(config.ANTHROPIC_API_KEY, config.ANTHROPIC_MODEL, config.LLM_BASE_URL)
         self.session_manager = SessionManager(config.MAX_HISTORY)
         
@@ -120,19 +121,21 @@ class RAGSystem:
         if session_id:
             history = self.session_manager.get_conversation_history(session_id)
         
-        # Generate response using AI with tools
-        response = self.ai_generator.generate_response(
-            query=prompt,
-            conversation_history=history,
-            tools=self.tool_manager.get_tool_definitions(),
-            tool_manager=self.tool_manager
-        )
-        
-        # Get sources from the search tool
-        sources = self.tool_manager.get_last_sources()
-
-        # Reset sources after retrieving them
+        # Generate response using AI with tools; sources must not leak into the next query,
+        # even when generation fails
         self.tool_manager.reset_sources()
+        try:
+            response = self.ai_generator.generate_response(
+                query=prompt,
+                conversation_history=history,
+                tools=self.tool_manager.get_tool_definitions(),
+                tool_manager=self.tool_manager
+            )
+
+            # Get sources from the search tool
+            sources = self.tool_manager.get_last_sources()
+        finally:
+            self.tool_manager.reset_sources()
         
         # Update conversation history
         if session_id:

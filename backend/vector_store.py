@@ -1,3 +1,4 @@
+import re
 import chromadb
 from chromadb.config import Settings
 from typing import List, Dict, Any, Optional
@@ -34,8 +35,10 @@ class SearchResults:
 class VectorStore:
     """Vector storage using ChromaDB for course content and metadata"""
     
-    def __init__(self, chroma_path: str, embedding_model: str, max_results: int = 5):
+    def __init__(self, chroma_path: str, embedding_model: str, max_results: int = 5,
+                 course_match_max_distance: float = 1.25):
         self.max_results = max_results
+        self.course_match_max_distance = course_match_max_distance
         # Initialize ChromaDB client
         self.client = chromadb.PersistentClient(
             path=chroma_path,
@@ -99,20 +102,44 @@ class VectorStore:
         except Exception as e:
             return SearchResults.empty(f"Search error: {str(e)}")
     
+    # Words that say nothing about which course is meant ("the MCP course")
+    _GENERIC_NAME_WORDS = {"course", "the", "a", "an", "of", "on", "for", "with", "and", "to", "in", "lesson"}
+
+    @classmethod
+    def _name_words(cls, text: str) -> set:
+        return set(re.findall(r"[a-z0-9]+", text.lower())) - cls._GENERIC_NAME_WORDS
+
     def _resolve_course_name(self, course_name: str) -> Optional[str]:
-        """Use vector search to find best matching course by name"""
+        """Find the course best matching course_name, or None if no course is close enough"""
         try:
+            course_count = self.course_catalog.count()
+            if not course_count:
+                return None
+            # The catalog is one doc per course, so rank all of them
             results = self.course_catalog.query(
                 query_texts=[course_name],
-                n_results=1
+                n_results=course_count
             )
-            
-            if results['documents'][0] and results['metadatas'][0]:
-                # Return the title (which is now the ID)
-                return results['metadatas'][0][0]['title']
+            ranked = list(zip(
+                (meta['title'] for meta in results['metadatas'][0]),
+                results['distances'][0]
+            ))
+
+            # Prefer titles containing every word of the name: the embedding model
+            # handles acronyms like "MCP" poorly, so their distances are unreliable
+            name_words = self._name_words(course_name)
+            if name_words:
+                for title, _ in ranked:
+                    if name_words <= self._name_words(title):
+                        return title
+
+            # Otherwise fall back to the semantically closest title, if close enough
+            title, distance = ranked[0]
+            if distance <= self.course_match_max_distance:
+                return title
         except Exception as e:
             print(f"Error resolving course name: {e}")
-        
+
         return None
     
     def _build_filter(self, course_title: Optional[str], lesson_number: Optional[int]) -> Optional[Dict]:
