@@ -1,0 +1,6 @@
+# gemma4 with an 8192-token context window. Ollama's default is VRAM-based (4096 here) and its
+# Anthropic-compatible endpoint can't set num_ctx per request; two tool rounds overflow 4096 and
+# Ollama then silently drops the start of the prompt (the system prompt).
+#   ollama create gemma4-8k -f Modelfile    then in .env: ANTHROPIC_MODEL=gemma4-8k
+FROM gemma4
+PARAMETER num_ctx 8192

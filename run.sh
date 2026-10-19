@@ -43,7 +43,11 @@ if [ -n "$LLM_BASE_URL" ]; then
     [[ "$model" != *:* ]] && model="${model}:latest"
     if ! curl -sf "${LLM_BASE_URL}/api/tags" | grep -q "\"name\":\"${model}\""; then
         echo "Error: model '${ANTHROPIC_MODEL}' is not available in Ollama."
-        echo "Download it with: ollama pull ${ANTHROPIC_MODEL}"
+        if [ "$ANTHROPIC_MODEL" = "gemma4-8k" ] && [ -f Modelfile ]; then
+            echo "Create it with: ollama pull gemma4 && ollama create gemma4-8k -f Modelfile"
+        else
+            echo "Download it with: ollama pull ${ANTHROPIC_MODEL}"
+        fi
         exit 1
     fi
 else

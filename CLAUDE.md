@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Commands
 
-Uses `uv` (Python 3.13). Always use `uv` to run Python files (`uv run python <file>`) and to manage dependencies (`uv add <pkg>`); never call `pip` or bare `python` directly. Configured via a root `.env` (see `.env.example`): either `ANTHROPIC_API_KEY` for Claude, or `LLM_BASE_URL=http://localhost:11434` + `ANTHROPIC_MODEL=<ollama model>` to use a local Ollama model through its Anthropic-compatible `/v1/messages` endpoint (no key needed; `AIGenerator` then disables thinking and uses a placeholder key).
+Uses `uv` (Python 3.13). Always use `uv` to run Python files (`uv run python <file>`) and to manage dependencies (`uv add <pkg>`); never call `pip` or bare `python` directly. Configured via a root `.env` (see `.env.example`): either `ANTHROPIC_API_KEY` for Claude, or `LLM_BASE_URL=http://localhost:11434` + `ANTHROPIC_MODEL=<ollama model>` (default `gemma4-8k`, built from the root `Modelfile` to get an 8192-token context: Ollama's default window, 4096 on this machine, silently truncates two tool rounds and can't be set per request) to use a local Ollama model through its Anthropic-compatible `/v1/messages` endpoint (no key needed; `AIGenerator` then disables thinking and uses a placeholder key).
 
 ```bash
 uv sync                      # install dependencies
@@ -28,8 +28,9 @@ A course-materials RAG chatbot: FastAPI backend + vanilla JS frontend served as 
 **Query flow** — Retrieval is driven by Claude tool use, not by a fixed retrieve-then-generate step:
 1. `POST /api/query` (`app.py`) → `RAGSystem.query()` (`rag_system.py`), the orchestrator that wires all components.
 2. `AIGenerator.generate_response()` makes a first Claude call with two tools available: `search_course_content` (chunk search) and `get_course_outline` (title, link and lesson list from `course_catalog`). Claude decides whether to call one.
-3. If `stop_reason == "tool_use"`, `ToolManager` dispatches to `CourseSearchTool` → `VectorStore.search()` or `CourseOutlineTool` → `VectorStore.get_course_outline()`, then a second Claude call is made with the tool results and **no tools** — so at most one tool round per query.
-4. Sources for the UI are not returned through the call chain: each tool stores them in `last_sources` as a side effect, and `RAGSystem` reads and resets them via `ToolManager` after generation.
+3. If the response contains `tool_use` blocks (checked on the blocks, not `stop_reason`, since local models may report `end_turn`), `ToolManager` dispatches to `CourseSearchTool` → `VectorStore.search()` or `CourseOutlineTool` → `VectorStore.get_course_outline()`, and the next call carries the results **with tools still available**. Up to `MAX_TOOL_ROUNDS = 2` tool rounds (and `MAX_TOOL_CALLS = 2` executions, repeated identical calls not re-run); after the last round, or as soon as a tool fails, one final call is made **without tools** (omitting `tools`, since Ollama ignores `tool_choice`). So at most 3 API calls per query.
+   - A failed call is a `ToolError` (a `str` subclass from `search_tools.py`): unknown tool, exception in `execute`, or a ChromaDB `Search error`. "No course found" / "No relevant content" are normal results the model may retry in round 2.
+4. Sources for the UI are not returned through the call chain: each tool stores them in `last_sources` as a side effect, `ToolManager.execute_tool` accumulates those of every successful call (deduplicated, in call order), and `RAGSystem` reads and resets them via `ToolManager` after generation.
 
 **Conversation history** is held in memory by `SessionManager` (lost on restart, last `MAX_HISTORY` exchanges) and injected as text into the **system prompt**, not as prior `messages`.
 
@@ -51,6 +52,6 @@ Lesson Link: <url>
 ```
 Chunks are sentence-based (`CHUNK_SIZE`/`CHUNK_OVERLAP` in `config.py`) and prefixed with lesson/course context before embedding.
 
-**Adding a tool**: subclass `Tool` in `search_tools.py` (Anthropic tool-definition dict + `execute`) and register it with `ToolManager` in `RAGSystem.__init__`. Note `AIGenerator` only executes one round of tool calls.
+**Adding a tool**: subclass `Tool` in `search_tools.py` (Anthropic tool-definition dict + `execute`) and register it with `ToolManager` in `RAGSystem.__init__`. Return `ToolError(...)` from `execute` for failures that should end the tool rounds.
 
 All tunables (Claude model, embedding model, chunk size, result count, history length) live in `backend/config.py`.

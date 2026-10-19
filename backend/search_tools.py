@@ -4,6 +4,10 @@ from abc import ABC, abstractmethod
 from vector_store import VectorStore, SearchResults
 
 
+class ToolError(str):
+    """Tool output that marks a failed call; still a plain str for the model and existing callers"""
+
+
 class Tool(ABC):
     """Abstract base class for all tools"""
     
@@ -39,7 +43,7 @@ class CourseSearchTool(Tool):
                     },
                     "course_name": {
                         "type": "string",
-                        "description": "Course title (partial matches work, e.g. 'MCP', 'Chroma')"
+                        "description": "Course title (partial matches work, e.g. 'MCP', 'Chroma'); omit to search all courses"
                     },
                     "lesson_number": {
                         "type": "integer",
@@ -70,8 +74,10 @@ class CourseSearchTool(Tool):
             lesson_number=lesson_number
         )
         
-        # Handle errors
+        # Handle errors: an unknown course is a normal result the model can retry, a store failure is not
         if results.error:
+            if results.error.startswith("Search error"):
+                return ToolError(results.error)
             return results.error
         
         # Handle empty results
@@ -179,6 +185,7 @@ class ToolManager:
     
     def __init__(self):
         self.tools = {}
+        self.sources = []  # Sources of all successful calls since the last reset, in call order
     
     def register_tool(self, tool: Tool):
         """Register any tool that implements the Tool interface"""
@@ -196,7 +203,7 @@ class ToolManager:
     def execute_tool(self, tool_name: str, **kwargs) -> str:
         """Execute a tool by name with given parameters"""
         if tool_name not in self.tools:
-            return f"Tool '{tool_name}' not found"
+            return ToolError(f"Tool '{tool_name}' not found")
 
         tool = self.tools[tool_name]
         # Arguments come from the model, which may add unknown keys or send wrong types
@@ -206,10 +213,19 @@ class ToolManager:
             for name, value in kwargs.items()
             if name in properties
         }
+        # Clear the tool's own sources so an early return can't leave those of a previous call
+        if hasattr(tool, 'last_sources'):
+            tool.last_sources = []
         try:
-            return tool.execute(**args)
+            result = tool.execute(**args)
         except Exception as e:
-            return f"Error executing tool '{tool_name}': {e}"
+            return ToolError(f"Error executing tool '{tool_name}': {e}")
+
+        if not isinstance(result, ToolError):
+            for source in getattr(tool, 'last_sources', []):
+                if source not in self.sources:
+                    self.sources.append(source)
+        return result
 
     @staticmethod
     def _coerce(value: Any, schema_type: Optional[str]) -> Any:
@@ -224,15 +240,12 @@ class ToolManager:
         return value
     
     def get_last_sources(self) -> list:
-        """Get sources from the last search operation"""
-        # Check all tools for last_sources attribute
-        for tool in self.tools.values():
-            if hasattr(tool, 'last_sources') and tool.last_sources:
-                return tool.last_sources
-        return []
+        """Get the sources of all tool calls since the last reset, without duplicates"""
+        return list(self.sources)
 
     def reset_sources(self):
         """Reset sources from all tools that track sources"""
+        self.sources = []
         for tool in self.tools.values():
             if hasattr(tool, 'last_sources'):
                 tool.last_sources = []

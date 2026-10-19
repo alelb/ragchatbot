@@ -1,6 +1,6 @@
 import pytest
 
-from search_tools import CourseSearchTool, ToolManager
+from search_tools import CourseSearchTool, CourseOutlineTool, ToolError, ToolManager
 from vector_store import SearchResults
 from conftest import make_results, MCP_COURSE
 
@@ -33,8 +33,16 @@ class TestExecuteFormatting:
     def test_returns_store_error_verbatim(self, mock_store):
         mock_store.search.return_value = SearchResults.empty("No course found matching 'xyz'")
         tool = CourseSearchTool(mock_store)
-        assert tool.execute("q", course_name="xyz") == "No course found matching 'xyz'"
+        result = tool.execute("q", course_name="xyz")
+        assert result == "No course found matching 'xyz'"
+        assert not isinstance(result, ToolError)  # a normal result: the model can retry another name
         assert tool.last_sources == []
+
+    def test_store_failure_is_a_tool_error(self, mock_store):
+        mock_store.search.return_value = SearchResults.empty("Search error: database is locked")
+        result = CourseSearchTool(mock_store).execute("q")
+        assert result == "Search error: database is locked"
+        assert isinstance(result, ToolError)
 
 
 class TestExecuteEmptyResults:
@@ -103,8 +111,9 @@ class TestExecuteLLMArguments:
         mock_store.search.side_effect = RuntimeError("db locked")
         manager = ToolManager()
         manager.register_tool(CourseSearchTool(mock_store))
-        assert manager.execute_tool("search_course_content", query="q") == \
-            "Error executing tool 'search_course_content': db locked"
+        result = manager.execute_tool("search_course_content", query="q")
+        assert result == "Error executing tool 'search_course_content': db locked"
+        assert isinstance(result, ToolError)
 
 
 # --- ToolManager ---
@@ -117,7 +126,9 @@ class TestToolManager:
         assert manager.execute_tool("search_course_content", query="q") == "[C - Lesson 1]\ndoc"
 
     def test_unknown_tool(self):
-        assert ToolManager().execute_tool("nope") == "Tool 'nope' not found"
+        result = ToolManager().execute_tool("nope")
+        assert result == "Tool 'nope' not found"
+        assert isinstance(result, ToolError)
 
     def test_tool_definition_requires_query(self, mock_store):
         definition = CourseSearchTool(mock_store).get_tool_definition()
@@ -132,6 +143,50 @@ class TestToolManager:
         assert manager.get_last_sources() == [{"text": "C - Lesson 1", "url": None}]
         manager.reset_sources()
         assert manager.get_last_sources() == []
+
+
+class TestSourceAccumulation:
+    """Sources of every call in a query are kept, e.g. an outline then a search"""
+
+    @pytest.fixture
+    def manager(self, mock_store):
+        mock_store.get_course_outline.return_value = {
+            "title": "Course A", "course_link": "https://course", "lessons": [],
+        }
+        manager = ToolManager()
+        manager.register_tool(CourseSearchTool(mock_store))
+        manager.register_tool(CourseOutlineTool(mock_store))
+        return manager
+
+    def test_sources_accumulate_in_call_order(self, manager, mock_store):
+        mock_store.search.return_value = make_results([("doc", {"course_title": "C", "lesson_number": 1})])
+        manager.execute_tool("get_course_outline", course_name="A")
+        manager.execute_tool("search_course_content", query="q")
+        assert manager.get_last_sources() == [
+            {"text": "Course A", "url": "https://course"},
+            {"text": "C - Lesson 1", "url": None},
+        ]
+
+    def test_two_searches_keep_both_and_merge_duplicates(self, manager, mock_store):
+        mock_store.search.side_effect = [
+            make_results([("a", {"course_title": "C", "lesson_number": 1})]),
+            make_results([("b", {"course_title": "C", "lesson_number": 1}),
+                          ("c", {"course_title": "C", "lesson_number": 2})]),
+        ]
+        manager.execute_tool("search_course_content", query="first")
+        manager.execute_tool("search_course_content", query="second")
+        assert [s["text"] for s in manager.get_last_sources()] == ["C - Lesson 1", "C - Lesson 2"]
+
+    def test_failed_call_adds_no_stale_sources(self, manager, mock_store):
+        mock_store.search.side_effect = [
+            make_results([("a", {"course_title": "C", "lesson_number": 1})]),
+            SearchResults.empty("Search error: database is locked"),
+        ]
+        manager.execute_tool("search_course_content", query="first")
+        manager.execute_tool("search_course_content", query="second")
+        assert manager.get_last_sources() == [{"text": "C - Lesson 1", "url": None}]
+        # The failed call must not leave the first call's sources on the tool either
+        assert manager.tools["search_course_content"].last_sources == []
 
 
 # --- CourseSearchTool.execute against the real (copied) ChromaDB ---
